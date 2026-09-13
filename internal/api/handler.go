@@ -3,18 +3,29 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
+	"io"
 	"net/http"
 )
 
-type Handler struct{}
+type jobService interface {
+	Create(ctx context.Context, r io.Reader) error
+}
 
-func NewHandler() *Handler {
-	return &Handler{}
+type Handler struct {
+	jobService jobService
+}
+
+func NewHandler(js jobService) *Handler {
+	return &Handler{
+		jobService: js,
+	}
 }
 
 func (h *Handler) CreateTranscription(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]any{
-		"msg": "hello world",
-	})
+	file, _, err := r.FormFile("audio")
+	if err != nil {
+		return
+	}
+	defer file.Close()
 }

@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: transcriber-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: transcriber
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  s3:
+    image: chrislusf/seaweedfs:latest
+    container_name: transcriber-storage
+    ports:
+      - "8333:8333" # S3 API
+      - "9333:9333" # Master UI
+      - "8888:8888" # Filer UI
+    volumes:
+      - seaweedfs_data:/data
+      # Монтируем конфиг с ключами (создай файл рядом)
+      - ./s3-config.json:/etc/seaweedfs/s3.json:ro
+
+volumes:
+  postgres_data:
+  seaweedfs_data:

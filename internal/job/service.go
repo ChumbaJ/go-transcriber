@@ -3,7 +3,7 @@ package job
 
 import (
 	"context"
-	"fmt"
+	"io"
 )
 
 type Repository interface {
@@ -11,9 +11,16 @@ type Repository interface {
 	Get(ctx context.Context, jobID string) *Job
 }
 
-type JobService struct {
-	repo Repository
+type Storage interface {
+	Upload(ctx context.Context, r io.Reader) (addr string, err error)
 }
+
+type JobService struct {
+	repo    Repository
+	storage Storage
+}
+
+var maxChunkSize int64 = 20 * 1024 * 1024 // 20MB
 
 func NewService(jobRepo Repository) *JobService {
 	return &JobService{
@@ -21,9 +28,22 @@ func NewService(jobRepo Repository) *JobService {
 	}
 }
 
-func (s *JobService) Create(ctx context.Context, j Job) {
-	if err := s.repo.Create(ctx, j); err != nil {
-		return fmt.Errorf("create job: %w", err)
+func (s *JobService) Create(ctx context.Context, r io.Reader) error {
+	order := 0
+	var chunks []*Chunk
+
+	for {
+		lr := io.LimitReader(r, maxChunkSize)
+		addr, err := s.storage.Upload(ctx, lr)
+
+		if err == io.EOF {
+			return nil
+		}
+
+		chunks = append(chunks, &Chunk{
+			Addr:  addr,
+			Order: order,
+		})
+		order++
 	}
-	return nil
 }

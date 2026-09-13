@@ -13,3 +13,6 @@ func NewJobRepo(db *pgxpool.Pool) *JobRepository {
 		db: db,
 	}
 }
+
+func (r *JobRepository) Create() {
+}
