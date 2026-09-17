@@ -1,1 +1,1 @@
-DROP TABLE IS EXISTS chunks;
+DROP TABLE IF EXISTS chunks;

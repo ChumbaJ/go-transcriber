@@ -15,7 +15,10 @@ import (
 	"github.com/ChumbaJ/go-transcriber/internal/api"
 	"github.com/ChumbaJ/go-transcriber/internal/config"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/postgres"
+	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
+	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 )
 
 func run() error {
@@ -25,6 +28,9 @@ func run() error {
 	)
 	defer stop()
 
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file, using env vars")
+	}
 	cfg := config.Load()
 
 	pool, err := pgxpool.New(ctx, cfg.Database)
@@ -33,12 +39,16 @@ func run() error {
 	}
 
 	jobRepo := postgres.NewJobRepo(pool)
+	chunksRepo := postgres.NewChunksRepository(pool)
+	storage := s3.New(ctx, cfg.AwsAK, cfg.AwsSK, cfg.Bucket)
 
-	h := api.NewHandler()
+	jobService := job.NewService(jobRepo, chunksRepo, storage)
+
+	h := api.NewHandler(jobService)
 	r := api.NewRouter(h)
 
 	srv := &http.Server{
-		Addr:    ":3030",
+		Addr:    ":" + cfg.Port,
 		Handler: r,
 	}
 
@@ -49,6 +59,8 @@ func run() error {
 			errCh <- err
 		}
 	}()
+
+	fmt.Println("server is listening on port: ", cfg.Port)
 
 	select {
 

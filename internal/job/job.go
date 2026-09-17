@@ -21,7 +21,7 @@ type Transcribtions struct {
 }
 
 type Job struct {
-	ID         int
+	ID         int64
 	Status     JobStatus
 	ResultText string
 }
