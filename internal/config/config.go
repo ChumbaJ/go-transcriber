@@ -9,6 +9,7 @@ type Config struct {
 	Bucket   string
 	AwsAK    string
 	AwsSK    string
+	RedisURL string
 }
 
 func Load() *Config {
@@ -18,5 +19,6 @@ func Load() *Config {
 		Bucket:   os.Getenv("S3_BUCKET"),
 		AwsAK:    os.Getenv("AWS_ACCESS_KEY"),
 		AwsSK:    os.Getenv("AWS_SECRET_KEY"),
+		RedisURL: os.Getenv("REDIS_URL"),
 	}
 }

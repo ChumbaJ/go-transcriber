@@ -23,6 +23,8 @@ func NewHandler(js jobService) *Handler {
 }
 
 func (h *Handler) CreateTranscription(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	file, _, err := r.FormFile("audio")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -31,7 +33,8 @@ func (h *Handler) CreateTranscription(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	err = h.jobService.Create(r.Context(), file)
+	// Create a job with audio chunks and enqueue
+	err = h.jobService.Create(ctx, file)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

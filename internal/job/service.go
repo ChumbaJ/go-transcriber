@@ -20,19 +20,31 @@ type Storage interface {
 	Upload(ctx context.Context, r io.Reader) (addr string, n int64, err error)
 }
 
+type QueueItem struct {
+	jobID      int64
+	ChunkOrder int
+	Addr       string
+}
+
+type Queue interface {
+	Push(ctx context.Context, item QueueItem) error
+}
+
 type JobService struct {
 	jobRepo    JobRepository
 	chunksRepo ChunksRepo
 	storage    Storage
+	Queue      Queue
 }
 
 var maxChunkSize int64 = 20 * 1024 * 1024 // 20MB
 
-func NewService(jobRepo JobRepository, chunksRepo ChunksRepo, storage Storage) *JobService {
+func NewService(jobRepo JobRepository, chunksRepo ChunksRepo, storage Storage, queue Queue) *JobService {
 	return &JobService{
 		jobRepo:    jobRepo,
 		chunksRepo: chunksRepo,
 		storage:    storage,
+		Queue:      queue,
 	}
 }
 

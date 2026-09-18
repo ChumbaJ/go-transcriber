@@ -24,6 +24,18 @@ services:
       # Монтируем конфиг с ключами (создай файл рядом)
       - ./s3-config.json:/etc/seaweedfs/s3.json:ro
 
+  redis:
+    image: redis:alpine3.23
+    container_name: redis
+    restart: unless-stopped
+    environment:
+      - REDIS_ARGS=--appendonly yes --requirepass redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
   seaweedfs_data:
+  redis_data:
