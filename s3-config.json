@@ -4,8 +4,8 @@
       "name": "admin",
       "credentials": [
         {
-          "accessKey": "transcriber",
-          "secretKey": "super-secret-key"
+          "accessKey": "my-key",
+          "secretKey": "my-secret"
         }
       ],
       "actions": [

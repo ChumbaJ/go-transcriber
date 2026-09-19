@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: transcriber-postgres
+    container_name: go-transcriber-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -13,20 +13,21 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   s3:
-    image: chrislusf/seaweedfs:latest
-    container_name: transcriber-storage
+    image: dxflrs/garage:v2.4.1
+    container_name: go-transcriber-storage
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${AWS_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: ${S3_BUCKET}
     ports:
-      - "8333:8333" # S3 API
-      - "9333:9333" # Master UI
-      - "8888:8888" # Filer UI
+      - "3900:3900" # S3 API
     volumes:
-      - seaweedfs_data:/data
-      # Монтируем конфиг с ключами (создай файл рядом)
-      - ./s3-config.json:/etc/seaweedfs/s3.json:ro
+      - ./garage.toml:/etc/garage.toml
+      - garage_data:/var/lib/garage
 
   redis:
     image: redis:alpine3.23
-    container_name: redis
+    container_name: go-transcriber-redis
     restart: unless-stopped
     environment:
       - REDIS_ARGS=--appendonly yes --requirepass redis
@@ -37,5 +38,5 @@ services:
 
 volumes:
   postgres_data:
-  seaweedfs_data:
+  garage_data:
   redis_data:

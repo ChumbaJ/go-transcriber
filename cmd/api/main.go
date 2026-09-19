@@ -15,6 +15,7 @@ import (
 	"github.com/ChumbaJ/go-transcriber/internal/api"
 	"github.com/ChumbaJ/go-transcriber/internal/config"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/postgres"
+	"github.com/ChumbaJ/go-transcriber/internal/infra/redis"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,8 +42,9 @@ func run() error {
 	jobRepo := postgres.NewJobRepo(pool)
 	chunksRepo := postgres.NewChunksRepository(pool)
 	storage := s3.New(ctx, cfg.AwsAK, cfg.AwsSK, cfg.Bucket)
+	rdb := redis.New(cfg.RedisURL)
 
-	jobService := job.NewService(jobRepo, chunksRepo, storage)
+	jobService := job.NewService(jobRepo, chunksRepo, storage, rdb)
 
 	h := api.NewHandler(jobService)
 	r := api.NewRouter(h)

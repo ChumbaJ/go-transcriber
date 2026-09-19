@@ -28,6 +28,7 @@ type QueueItem struct {
 
 type Queue interface {
 	Push(ctx context.Context, item *QueueItem) error
+	Log(ctx context.Context)
 }
 
 type JobService struct {
@@ -91,6 +92,9 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 			return fmt.Errorf("push to queue: %w", err)
 		}
 	}
+
+	// log what we pushed
+	s.Queue.Log(ctx)
 
 	return nil
 }
