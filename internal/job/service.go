@@ -27,7 +27,7 @@ type QueueItem struct {
 }
 
 type Queue interface {
-	Push(ctx context.Context, item QueueItem) error
+	Push(ctx context.Context, item *QueueItem) error
 }
 
 type JobService struct {
@@ -77,6 +77,19 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 
 	if err := s.chunksRepo.CreateBatch(ctx, job.ID, chunks); err != nil {
 		return fmt.Errorf("creating chunks batch: %w", err)
+	}
+
+	// push to Queue
+	for _, c := range chunks {
+		qi := &QueueItem{
+			jobID:      job.ID,
+			ChunkOrder: c.Order,
+			Addr:       c.Addr,
+		}
+
+		if err := s.Queue.Push(ctx, qi); err != nil {
+			return fmt.Errorf("push to queue: %w", err)
+		}
 	}
 
 	return nil

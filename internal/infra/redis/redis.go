@@ -1,7 +1,12 @@
 // Package redis is responsible for queuing
 package redis
 
-import "github.com/redis/go-redis/v9"
+import (
+	"context"
+
+	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/redis/go-redis/v9"
+)
 
 type Redis struct {
 	Client *redis.Client
@@ -17,4 +22,13 @@ func New(redisURL string) *Redis {
 	return &Redis{
 		Client: rdb,
 	}
+}
+
+func (r *Redis) Queue(ctx context.Context, item *job.QueueItem) error {
+	_ = r.Client.XAdd(ctx, &redis.XAddArgs{
+		Stream: "jobs",
+		Values: item,
+	})
+
+	return nil
 }
