@@ -8,16 +8,17 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: transcriber
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   s3:
     image: dxflrs/garage:v2.4.1
     container_name: go-transcriber-storage
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
     environment:
-      GARAGE_DEFAULT_ACCESS_KEY: ${AWS_ACCESS_KEY}
-      GARAGE_DEFAULT_SECRET_KEY: ${AWS_SECRET_KEY}
+      GARAGE_DEFAULT_ACCESS_KEY: ${AWS_ACCESS_KEY_ID}
+      GARAGE_DEFAULT_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY}
       GARAGE_DEFAULT_BUCKET: ${S3_BUCKET}
     ports:
       - "3900:3900" # S3 API
