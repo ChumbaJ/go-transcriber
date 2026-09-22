@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -13,24 +12,20 @@ type Redis struct {
 	Client *redis.Client
 }
 
-func New(redisURL string) *Redis {
+func New(ctx context.Context, redisURL string) *Redis {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
 		panic(err)
 	}
 	rdb := redis.NewClient(opt)
 
+	if err := rdb.XGroupCreate(ctx, "jobs", "transcribers", "0").Err(); err != nil {
+		panic(err)
+	}
+
 	return &Redis{
 		Client: rdb,
 	}
-}
-
-func (r *Redis) Push(ctx context.Context, item *job.QueueItem) error {
-	_ = r.Client.XAdd(ctx, &redis.XAddArgs{
-		Stream: "jobs",
-		Values: item,
-	})
-	return nil
 }
 
 func (r *Redis) Log(ctx context.Context) {

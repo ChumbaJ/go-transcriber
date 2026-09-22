@@ -1,0 +1,20 @@
+// Package redis
+package redis
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/redis/go-redis/v9"
+)
+
+func (r *Redis) ProduceJob(ctx context.Context, item *job.QueueItem) error {
+	if err := r.Client.XAdd(ctx, &redis.XAddArgs{
+		Stream: "jobs",
+		Values: item,
+	}).Err(); err != nil {
+		return fmt.Errorf("xadd: %w", err)
+	}
+	return nil
+}

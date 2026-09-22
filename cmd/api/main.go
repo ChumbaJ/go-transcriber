@@ -42,7 +42,7 @@ func run() error {
 	jobRepo := postgres.NewJobRepo(pool)
 	chunksRepo := postgres.NewChunksRepository(pool)
 	storage := s3.New(ctx, cfg.AwsAK, cfg.AwsSK, cfg.Bucket)
-	rdb := redis.New(cfg.RedisURL)
+	rdb := redis.New(ctx, cfg.RedisURL)
 
 	jobService := job.NewService(jobRepo, chunksRepo, storage, rdb)
 

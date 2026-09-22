@@ -27,7 +27,8 @@ type QueueItem struct {
 }
 
 type Queue interface {
-	Push(ctx context.Context, item *QueueItem) error
+	ProduceJob(ctx context.Context, item *QueueItem) error
+	ConsumeJob(ctx context.Context) error
 	Log(ctx context.Context)
 }
 
@@ -88,13 +89,15 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 			Addr:       c.Addr,
 		}
 
-		if err := s.Queue.Push(ctx, qi); err != nil {
+		if err := s.Queue.ProduceJob(ctx, qi); err != nil {
 			return fmt.Errorf("push to queue: %w", err)
 		}
 	}
 
 	// log what we pushed
-	s.Queue.Log(ctx)
+	if err := s.Queue.ConsumeJob(ctx); err != nil {
+		return fmt.Errorf("consume job: %w", err)
+	}
 
 	return nil
 }
