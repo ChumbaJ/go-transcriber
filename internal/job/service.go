@@ -32,7 +32,6 @@ type QueueItem struct {
 type Queue interface {
 	ProduceJob(ctx context.Context, item *QueueItem) error
 	ConsumeJob(ctx context.Context) error
-	Log(ctx context.Context)
 }
 
 type JobService struct {
@@ -99,7 +98,6 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 		}
 	}
 
-	// log what we pushed
 	if err := s.Queue.ConsumeJob(ctx); err != nil {
 		return fmt.Errorf("consume job: %w", err)
 	}

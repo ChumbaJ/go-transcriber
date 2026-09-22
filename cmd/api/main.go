@@ -43,6 +43,10 @@ func run() error {
 	chunksRepo := postgres.NewChunksRepository(pool)
 	storage := s3.New(ctx, cfg.Bucket)
 	rdb := redis.New(ctx, cfg.RedisURL)
+	if err := rdb.Init(ctx); err != nil {
+		fmt.Println("init rbd err: ", err.Error())
+		panic("")
+	}
 
 	jobService := job.NewService(jobRepo, chunksRepo, storage, rdb)
 

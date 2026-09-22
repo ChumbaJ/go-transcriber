@@ -9,7 +9,7 @@ import (
 )
 
 func (r *Redis) ConsumeJob(ctx context.Context) error {
-	streams, err := r.Client.XReadGroup(ctx, &redis.XReadGroupArgs{
+	_, err := r.Client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    "transcribers",
 		Consumer: "transcriber-consumer",
 		Streams:  []string{"jobs", ">"},
@@ -18,12 +18,7 @@ func (r *Redis) ConsumeJob(ctx context.Context) error {
 		return fmt.Errorf("xreadgroup: %w", err)
 	}
 
-	for _, s := range streams {
-		for _, m := range s.Messages {
-			fmt.Println("stream: ", s.Stream)
-			fmt.Println("message:", m)
-		}
-	}
+	fmt.Println("DO JOB")
 
 	return nil
 }
