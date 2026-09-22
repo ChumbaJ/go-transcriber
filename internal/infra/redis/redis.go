@@ -19,7 +19,7 @@ func New(ctx context.Context, redisURL string) *Redis {
 	}
 	rdb := redis.NewClient(opt)
 
-	if err := rdb.XGroupCreate(ctx, "jobs", "transcribers", "0").Err(); err != nil {
+	if err := rdb.XGroupCreateMkStream(ctx, "jobs", "transcribers", "0").Err(); err != nil {
 		panic(err)
 	}
 
@@ -29,13 +29,11 @@ func New(ctx context.Context, redisURL string) *Redis {
 }
 
 func (r *Redis) Log(ctx context.Context) {
-	streams, err := r.Client.XRead(ctx, &redis.XReadArgs{
-		Streams: []string{"jobs"},
-	}).Result()
+	res, err := r.Client.XRange(ctx, "jobs", "-", "+").Result()
 	if err != nil {
 		fmt.Println("error logging redis", err.Error())
 		return
 	}
 
-	fmt.Println("streams: ", streams)
+	fmt.Println("stream jobs: ", res)
 }
