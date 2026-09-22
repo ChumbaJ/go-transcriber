@@ -2,20 +2,20 @@
 package s3
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 )
 
 type Storage struct {
-	Bucket    string
-	S3Manager *transfermanager.Client
+	Bucket   string
+	S3Client *s3.Client
 }
 
 func New(ctx context.Context, bucket string) *Storage {
@@ -28,55 +28,38 @@ func New(ctx context.Context, bucket string) *Storage {
 		return nil
 	}
 
-	s3Client := s3.NewFromConfig(sdkConfig)
-	s3Manager := transfermanager.New(s3Client)
-
-	// Just a formal check log
-	fmt.Printf("Let's list up buckets for your account.\n")
-	result, err := s3Client.ListBuckets(ctx, &s3.ListBucketsInput{})
-	if err != nil {
-		fmt.Printf("S3 error: %+v\n", err)
-		return nil
-	}
-	for _, bucket := range result.Buckets {
-		fmt.Printf("\t%v\n", *bucket.Name)
-	}
+	s3Client := s3.NewFromConfig(sdkConfig, func(o *s3.Options) {
+		o.UsePathStyle = true
+	})
 
 	return &Storage{
-		S3Manager: s3Manager,
-		Bucket:    bucket,
+		S3Client: s3Client,
+		Bucket:   bucket,
 	}
 }
 
-// countingReader counts bytes from reader
-type countingReader struct {
-	n int64
-	r io.Reader
-}
+var ErrEOF = errors.New("storage: no more data")
 
-func (cr *countingReader) Read(p []byte) (int, error) {
-	n, err := cr.r.Read(p)
-	cr.n += int64(n)
+func (s *Storage) Upload(ctx context.Context, b []byte) (addr string, err error) {
+	// The file is over, EOF
+	if len(b) == 0 {
+		return "", ErrEOF
+	}
 
-	return n, err
-}
-
-func (s *Storage) Upload(ctx context.Context, r io.Reader) (addr string, n int64, err error) {
 	key := uuid.NewString()
 
-	cr := &countingReader{
-		r: r,
-		n: 0,
-	}
-
-	_, err = s.S3Manager.UploadObject(ctx, &transfermanager.UploadObjectInput{
+	input := &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(key),
-		Body:   cr,
-	})
-	if err != nil {
-		return "", 0, fmt.Errorf("error putting into bucket: %w", err)
+		Body:   bytes.NewReader(b),
 	}
 
-	return key, cr.n, nil
+	_, err = s.S3Client.PutObject(ctx, input)
+
+	if err != nil {
+		fmt.Println("error putting into bucket: ", err.Error())
+		return "", fmt.Errorf("error putting into bucket: %w", err)
+	}
+
+	return key, nil
 }

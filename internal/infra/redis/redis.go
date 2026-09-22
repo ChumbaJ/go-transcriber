@@ -3,6 +3,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
@@ -26,21 +27,26 @@ func New(redisURL string) *Redis {
 }
 
 func (r *Redis) Push(ctx context.Context, item *job.QueueItem) error {
-	_ = r.Client.XAdd(ctx, &redis.XAddArgs{
+	payload, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("marshal job item: %w", err)
+	}
+
+	if err := r.Client.XAdd(ctx, &redis.XAddArgs{
 		Stream: "jobs",
-		Values: item,
-	})
+		Values: map[string]any{"job": payload},
+	}).Err(); err != nil {
+		return fmt.Errorf("XAdd: %w", err)
+	}
 	return nil
 }
 
 func (r *Redis) Log(ctx context.Context) {
-	streams, err := r.Client.XRead(ctx, &redis.XReadArgs{
-		Streams: []string{"jobs"},
-	}).Result()
+	res, err := r.Client.XRange(ctx, "jobs", "-", "+").Result()
 	if err != nil {
 		fmt.Println("error logging redis", err.Error())
 		return
 	}
 
-	fmt.Println("streams: ", streams)
+	fmt.Println("stream jobs: ", res)
 }

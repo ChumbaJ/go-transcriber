@@ -3,8 +3,11 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+
+	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
 )
 
 type JobRepository interface {
@@ -17,7 +20,7 @@ type ChunksRepo interface {
 }
 
 type Storage interface {
-	Upload(ctx context.Context, r io.Reader) (addr string, n int64, err error)
+	Upload(ctx context.Context, b []byte) (addr string, err error)
 }
 
 type QueueItem struct {
@@ -55,13 +58,15 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 
 	for {
 		lr := io.LimitReader(r, maxChunkSize)
-		addr, n, err := s.storage.Upload(ctx, lr)
+		part, err := io.ReadAll(lr)
+
+		addr, err := s.storage.Upload(ctx, part)
+		// There is nothing to read
+		if errors.Is(err, s3.ErrEOF) {
+			break
+		}
 		if err != nil {
 			return fmt.Errorf("read: %w", err)
-		}
-
-		if n == 0 {
-			break
 		}
 
 		chunks = append(chunks, &Chunk{
@@ -95,6 +100,5 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 
 	// log what we pushed
 	s.Queue.Log(ctx)
-
 	return nil
 }
