@@ -44,3 +44,18 @@ func (cr *ChunksRepository) CreateBatch(ctx context.Context, jobID int64, chunks
 
 	return nil
 }
+
+func (cr *ChunksRepository) CountByJobID(ctx context.Context, jobID int64) (int, error) {
+	var count int
+
+	err := cr.db.QueryRow(ctx, `
+			SELECT COUNT(*)
+			FROM chunks
+			WHERE job_id = $1
+		`, jobID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count chunks: ", err)
+	}
+
+	return count, nil
+}

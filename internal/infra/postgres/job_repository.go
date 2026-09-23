@@ -30,6 +30,32 @@ func (r *JobRepository) Create(ctx context.Context) (*job.Job, error) {
 	return j, nil
 }
 
+func (r *JobRepository) UpdateStatus(ctx context.Context, jobID int64, status job.JobStatus) error {
+	_, err := r.db.Exec(ctx, `
+			UPDATE jobs 
+			SET status = $1
+			WHERE id = $2
+		`, status, jobID)
+	if err != nil {
+		return fmt.Errorf("update job status: %w", err)
+	}
+
+	return nil
+}
+
+func (r *JobRepository) SetResult(ctx context.Context, jobID int64, result string) error {
+	_, err := r.db.Exec(ctx, `
+			UPDATE jobs 
+			SET result_text = $1
+			WHERE id = $2
+		`, result, jobID)
+	if err != nil {
+		return fmt.Errorf("update job status: %w", err)
+	}
+
+	return nil
+}
+
 func (r *JobRepository) Get(ctx context.Context, jobID string) *job.Job {
 	return nil
 }

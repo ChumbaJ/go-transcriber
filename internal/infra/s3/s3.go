@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -61,4 +62,23 @@ func (s *Storage) Upload(ctx context.Context, b []byte) (addr string, err error)
 	}
 
 	return key, nil
+}
+
+func (s *Storage) Get(ctx context.Context, addr string) ([]byte, error) {
+	output, err := s.S3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.Bucket),
+		Key:    aws.String(addr),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 getobject: %w", err)
+	}
+
+	defer output.Body.Close()
+
+	b, err := io.ReadAll(output.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	return b, nil
 }

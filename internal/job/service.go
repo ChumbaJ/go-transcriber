@@ -24,14 +24,18 @@ type Storage interface {
 }
 
 type QueueItem struct {
-	jobID      int64
+	JobID      int64
 	ChunkOrder int
 	Addr       string
 }
 
+type QueueMessage struct {
+	ID   string
+	Item QueueItem
+}
+
 type Queue interface {
 	ProduceJob(ctx context.Context, item *QueueItem) error
-	ConsumeJob(ctx context.Context) error
 }
 
 type JobService struct {
@@ -88,7 +92,7 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 	// push to Queue
 	for _, c := range chunks {
 		qi := &QueueItem{
-			jobID:      job.ID,
+			JobID:      job.ID,
 			ChunkOrder: c.Order,
 			Addr:       c.Addr,
 		}
@@ -96,10 +100,6 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 		if err := s.Queue.ProduceJob(ctx, qi); err != nil {
 			return fmt.Errorf("push to queue: %w", err)
 		}
-	}
-
-	if err := s.Queue.ConsumeJob(ctx); err != nil {
-		return fmt.Errorf("consume job: %w", err)
 	}
 
 	return nil

@@ -34,10 +34,10 @@ func (r *Redis) Init(ctx context.Context) error {
 	return nil
 }
 
-func (r *Redis) Run(ctx context.Context) {
-	for {
-		// Consume job
-
-		// create a worker for a job
+func (r *Redis) Ack(ctx context.Context, messageID string) error {
+	if err := r.Client.XAck(ctx, "jobs", "transcribers", messageID).Err(); err != nil {
+		return fmt.Errorf("error xack: %w", err)
 	}
+
+	return nil
 }

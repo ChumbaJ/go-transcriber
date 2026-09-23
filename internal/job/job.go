@@ -14,8 +14,8 @@ type Chunk struct {
 	Addr  string
 }
 
-type Transcribtions struct {
-	JobID      int
+type Transcribtion struct {
+	JobID      int64
 	ChunkOrder int
 	Text       string
 }
