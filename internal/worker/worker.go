@@ -8,27 +8,39 @@ import (
 	"time"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/ChumbaJ/go-transcriber/internal/queue"
 )
 
 func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 	for {
-		msg, err := wp.queue.Dequeue(ctx, name)
+		msg, err := wp.queue.ClaimStale(ctx, name)
 		if err != nil {
-			fmt.Println("dequeue: %w", err.Error())
+			fmt.Println("error while claimStale: ", err.Error())
 			return
+		}
+
+		if msg == nil {
+			msg, err = wp.queue.Dequeue(ctx, name)
+			if err != nil {
+				fmt.Println("dequeue:", err)
+				return
+			}
+		}
+
+		if msg == nil {
+			continue
 		}
 
 		wp.processChunk(ctx, &msg.Item)
 
-		// XAck
-		if err := wp.queue.Ack(ctx, msg.ID); err != nil {
+		if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
 			fmt.Println("queue ack: ", err.Error())
 			return
 		}
 	}
 }
 
-func (wp *WorkerPool) processChunk(ctx context.Context, chunk *job.QueueItem) {
+func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) {
 	_, err := wp.storage.Get(ctx, chunk.Addr)
 	if err != nil {
 		fmt.Println("get storage: ", err.Error())
@@ -38,7 +50,7 @@ func (wp *WorkerPool) processChunk(ctx context.Context, chunk *job.QueueItem) {
 	// send to LLM
 	time.Sleep(time.Second * 15)
 
-	// save response to databse and check at the same time
+	// TODO: start transaction
 
 	// insert into transcriptions table
 	t := job.Transcribtion{

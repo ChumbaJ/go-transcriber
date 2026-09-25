@@ -6,12 +6,13 @@ import (
 	"strconv"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/ChumbaJ/go-transcriber/internal/queue"
 )
 
-type queue interface {
-	Dequeue(ctx context.Context, consumerName string) (*job.QueueMessage, error)
-	Ack(ctx context.Context, messageID string) error
-	ClaimStale(ctx context.Context, consumerName string) (*job.QueueMessage, error)
+type Queue interface {
+	Dequeue(ctx context.Context, consumerName string) (*queue.Message, error)
+	Confirm(ctx context.Context, messageID string) error
+	ClaimStale(ctx context.Context, consumerName string) (*queue.Message, error)
 }
 
 type chunkStorage interface {
@@ -36,14 +37,14 @@ type (
 type WorkerPool struct {
 	// Number of workers
 	count         uint8
-	queue         queue
+	queue         Queue
 	storage       chunkStorage
 	chunksRepo    chunkRepository
 	jobsRepo      jobRepository
 	transcripRepo transcriptionsRepository
 }
 
-func NewPool(count uint8, queue queue, cs chunkStorage, jobRepo jobRepository, chunksRepo chunkRepository, transRepo transcriptionsRepository) *WorkerPool {
+func NewPool(count uint8, queue Queue, cs chunkStorage, jobRepo jobRepository, chunksRepo chunkRepository, transRepo transcriptionsRepository) *WorkerPool {
 	return &WorkerPool{
 		count:         count,
 		queue:         queue,

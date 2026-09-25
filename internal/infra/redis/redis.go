@@ -2,10 +2,6 @@
 package redis
 
 import (
-	"context"
-	"fmt"
-	"strings"
-
 	"github.com/redis/go-redis/v9"
 )
 
@@ -13,7 +9,7 @@ type Redis struct {
 	Client *redis.Client
 }
 
-func New(ctx context.Context, redisURL string) *Redis {
+func New(redisURL string) *Redis {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
 		panic(err)
@@ -23,21 +19,4 @@ func New(ctx context.Context, redisURL string) *Redis {
 	return &Redis{
 		Client: rdb,
 	}
-}
-
-func (r *Redis) Init(ctx context.Context) error {
-	err := r.Client.XGroupCreateMkStream(ctx, "jobs", "transcribers", "0").Err()
-	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
-		return fmt.Errorf("create consumer group: %w", err)
-	}
-
-	return nil
-}
-
-func (r *Redis) Ack(ctx context.Context, messageID string) error {
-	if err := r.Client.XAck(ctx, "jobs", "transcribers", messageID).Err(); err != nil {
-		return fmt.Errorf("error xack: %w", err)
-	}
-
-	return nil
 }

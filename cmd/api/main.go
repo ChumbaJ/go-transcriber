@@ -18,6 +18,7 @@ import (
 	"github.com/ChumbaJ/go-transcriber/internal/infra/redis"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/ChumbaJ/go-transcriber/internal/queue"
 	"github.com/ChumbaJ/go-transcriber/internal/worker"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -45,15 +46,22 @@ func run() error {
 	transcripRepo := postgres.NewTranscripRepo(pool)
 	storage := s3.New(ctx, cfg.Bucket)
 	rdb := redis.New(ctx, cfg.RedisURL)
-	if err := rdb.Init(ctx); err != nil {
+
+	const (
+		streamName = "chunks"
+		groupName  = "transcribers"
+	)
+
+	if err := rdb.Init(ctx, streamName, groupName); err != nil {
 		fmt.Println("init rbd err: ", err.Error())
 		panic("")
 	}
 
-	wpool := worker.NewPool(3, rdb, storage, jobRepo, chunksRepo, transcripRepo)
+	q := queue.New(rdb, streamName, groupName)
+	wpool := worker.NewPool(3, q, storage, jobRepo, chunksRepo, transcripRepo)
 	go wpool.Run(ctx)
 
-	jobService := job.NewService(jobRepo, chunksRepo, storage, rdb)
+	jobService := job.NewService(jobRepo, chunksRepo, storage, q)
 
 	h := api.NewHandler(jobService)
 	r := api.NewRouter(h)

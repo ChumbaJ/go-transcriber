@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
+	"github.com/ChumbaJ/go-transcriber/internal/queue"
 )
 
 type JobRepository interface {
@@ -23,19 +24,8 @@ type Storage interface {
 	Upload(ctx context.Context, b []byte) (addr string, err error)
 }
 
-type QueueItem struct {
-	JobID      int64
-	ChunkOrder int
-	Addr       string
-}
-
-type QueueMessage struct {
-	ID   string
-	Item QueueItem
-}
-
 type Queue interface {
-	ProduceJob(ctx context.Context, item *QueueItem) error
+	Enqueue(ctx context.Context, item *queue.Item) error
 }
 
 type JobService struct {
@@ -91,13 +81,13 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 
 	// push to Queue
 	for _, c := range chunks {
-		qi := &QueueItem{
+		qi := &queue.Item{
 			JobID:      job.ID,
 			ChunkOrder: c.Order,
 			Addr:       c.Addr,
 		}
 
-		if err := s.Queue.ProduceJob(ctx, qi); err != nil {
+		if err := s.Queue.Enqueue(ctx, qi); err != nil {
 			return fmt.Errorf("push to queue: %w", err)
 		}
 	}
