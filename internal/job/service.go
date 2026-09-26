@@ -13,7 +13,7 @@ import (
 
 type JobRepository interface {
 	Create(ctx context.Context) (*Job, error)
-	Get(ctx context.Context, jobID string) *Job
+	Get(ctx context.Context, jobID int64) (*Job, error)
 }
 
 type ChunksRepo interface {
@@ -93,4 +93,12 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 	}
 
 	return nil
+}
+
+func (s *JobService) Get(ctx context.Context, jobID int64) (*Job, error) {
+	job, err := s.jobRepo.Get(ctx, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("error get job: %w", err)
+	}
+	return job, nil
 }

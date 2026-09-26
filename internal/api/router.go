@@ -8,8 +8,9 @@ func NewRouter(h *Handler) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Route("/transcriptions", func(r chi.Router) {
-			r.Post("/", h.CreateTranscription)
+		r.Route("/jobs", func(r chi.Router) {
+			r.Post("/", h.CreateJob)
+			r.Get("/{id}", h.GetJob)
 		})
 	})
 

@@ -56,6 +56,11 @@ func (r *JobRepository) SetResult(ctx context.Context, jobID int64, result strin
 	return nil
 }
 
-func (r *JobRepository) Get(ctx context.Context, jobID string) *job.Job {
-	return nil
+func (r *JobRepository) Get(ctx context.Context, jobID int64) (*job.Job, error) {
+	var j job.Job
+	err := r.db.QueryRow(ctx, `SELECT id, status, result_text FROM jobs WHERE id = $1`, jobID).Scan(&j.ID, &j.Status, &j.ResultText)
+	if err != nil {
+		return nil, fmt.Errorf("error querying job by id: %w", err)
+	}
+	return &j, nil
 }

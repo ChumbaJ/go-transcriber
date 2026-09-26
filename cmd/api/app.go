@@ -19,6 +19,7 @@ import (
 type app struct {
 	server *http.Server
 	db     *postgres.Postgres
+	logger *slog.Logger
 }
 
 func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app, error) {
@@ -37,7 +38,9 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 
 	rdb := redis.New(cfg.RedisURL)
 	if err := rdb.Init(ctx, streamName, groupName); err != nil {
+		// Why are they here?
 		pg.Close()
+		rdb.Client.Close()
 		return nil, fmt.Errorf("init redis: %w", err)
 	}
 	queue := queue.New(rdb, streamName, groupName)
@@ -71,13 +74,14 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 	return &app{
 		server: srv,
 		db:     pg,
+		logger: logger,
 	}, nil
 }
 
 func (a *app) run() {
-	defer a.db.Close()
 	if err := a.server.ListenAndServe(); err != nil {
-
+		a.logger.Error("error listenAndServe")
 		return
 	}
+	fmt.Println("server is listening on port ", a.server.Addr)
 }
