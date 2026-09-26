@@ -4,27 +4,31 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
-	"net/http"
+	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
-	"time"
 
-	"github.com/ChumbaJ/go-transcriber/internal/api"
 	"github.com/ChumbaJ/go-transcriber/internal/config"
-	"github.com/ChumbaJ/go-transcriber/internal/infra/postgres"
-	"github.com/ChumbaJ/go-transcriber/internal/infra/redis"
-	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
-	"github.com/ChumbaJ/go-transcriber/internal/job"
-	"github.com/ChumbaJ/go-transcriber/internal/queue"
-	"github.com/ChumbaJ/go-transcriber/internal/worker"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
-func run() error {
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	defer func() {
+		if value := recover(); value != nil {
+			logger.Error(
+				"unexpected panic",
+				"panic", value,
+				"stack", string(debug.Stack()),
+			)
+		}
+	}()
+
 	ctx, stop := signal.NotifyContext(context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
@@ -32,78 +36,15 @@ func run() error {
 	defer stop()
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file, using env vars")
+		logger.WarnContext(ctx, "could not load .env, using environment variables", "error", err)
 	}
 	cfg := config.Load()
 
-	pool, err := pgxpool.New(ctx, cfg.Database)
+	app, err := newApp(ctx, cfg, logger)
 	if err != nil {
-		return fmt.Errorf("error while connecting to database: %w", err)
+		logger.ErrorContext(ctx, "application initialization failed", "error", err)
+		return
 	}
 
-	jobRepo := postgres.NewJobRepo(pool)
-	chunksRepo := postgres.NewChunksRepository(pool)
-	transcripRepo := postgres.NewTranscripRepo(pool)
-	storage := s3.New(ctx, cfg.Bucket)
-	rdb := redis.New(ctx, cfg.RedisURL)
-
-	const (
-		streamName = "chunks"
-		groupName  = "transcribers"
-	)
-
-	if err := rdb.Init(ctx, streamName, groupName); err != nil {
-		fmt.Println("init rbd err: ", err.Error())
-		panic("")
-	}
-
-	q := queue.New(rdb, streamName, groupName)
-	wpool := worker.NewPool(3, q, storage, jobRepo, chunksRepo, transcripRepo)
-	go wpool.Run(ctx)
-
-	jobService := job.NewService(jobRepo, chunksRepo, storage, q)
-
-	h := api.NewHandler(jobService)
-	r := api.NewRouter(h)
-
-	srv := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: r,
-	}
-
-	errCh := make(chan error)
-
-	go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			errCh <- err
-		}
-	}()
-
-	fmt.Println("server is listening on port: ", cfg.Port)
-
-	select {
-
-	case <-ctx.Done():
-		log.Println("shutdown signal recieved")
-	case err := <-errCh:
-		return fmt.Errorf("server error: %w", err)
-
-	}
-
-	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
-	}
-
-	log.Println("server stopped")
-
-	return nil
-}
-
-func main() {
-	if err := run(); err != nil {
-		log.Fatalf("fatal %v", err)
-	}
+	app.run()
 }
