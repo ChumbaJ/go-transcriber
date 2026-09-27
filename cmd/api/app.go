@@ -66,6 +66,7 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 		pg.Jobs,
 		pg.Chunks,
 		pg.Transcripts,
+		logger,
 	)
 	// TODO: handle exceptions here
 	go wp.Run(ctx)

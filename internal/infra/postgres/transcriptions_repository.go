@@ -3,9 +3,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -68,4 +70,21 @@ func (r *TranscriptionsRepository) ListByJobID(ctx context.Context, jobID int64)
 	}
 
 	return result, nil
+}
+
+func (r *TranscriptionsRepository) ExistsByJobIDAndChunkOrder(ctx context.Context, jobID int64, chunkOrder int) (bool, error) {
+	if err := r.db.QueryRow(ctx,
+		`SELECT * FROM transcriptions
+	 WHERE job_id = $1 & chunk_order = $2;
+	`,
+		jobID,
+		chunkOrder,
+	).Scan(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("query ExistsByJobIDAndChunkOrder: %w", err)
+	}
+	return true, nil
 }

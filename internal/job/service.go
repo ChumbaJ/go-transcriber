@@ -77,6 +77,7 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("error creating job: %w", err)
 	}
 
+	// Разобраться как это работает
 	if err := s.chunksRepo.CreateBatch(ctx, job.ID, chunks); err != nil {
 		return fmt.Errorf("error creating chunks batch: %w", err)
 	}

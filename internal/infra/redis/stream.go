@@ -9,6 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const readBlockIntervalSec = 5
+
 func (r *Redis) EnsureGroup(ctx context.Context, stream, group string) error {
 	err := r.Client.XGroupCreateMkStream(ctx, stream, group, "0").Err()
 	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
@@ -34,6 +36,7 @@ func (r *Redis) ReadGroup(ctx context.Context, stream, group, consumer string) (
 		Consumer: consumer,
 		Streams:  []string{stream, ">"},
 		Count:    1,
+		Block:    time.Second * readBlockIntervalSec,
 	}).Result()
 	if err != nil {
 		return nil, fmt.Errorf("xreadgroup: %w", err)

@@ -15,13 +15,13 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 	for {
 		msg, err := wp.queue.ClaimStale(ctx, name)
 		if err != nil {
-			wp.logger.Error("error while claimStale", "error", err, "jobID", msg.Item.JobID)
+			wp.logger.Error("error while claimStale", "error", err, "worker", name)
 		}
 
 		if msg == nil {
 			msg, err = wp.queue.Dequeue(ctx, name)
 			if err != nil {
-				wp.logger.Error("dequeue", "error", err, "jobID", msg.Item.JobID)
+				wp.logger.Error("dequeue", "error", err, "worker", name)
 				// Here we can do a revive operation with retry count
 				return
 			}

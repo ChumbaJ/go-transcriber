@@ -33,10 +33,24 @@ func NewHandler(js jobService, logger *slog.Logger) *Handler {
 }
 
 func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	ctx := r.Context()
 
-	file, _, err := r.FormFile("audio")
+	r.Body = http.MaxBytesReader(w, r.Body, dto.MaxAudioSizeBytes)
+
+	file, header, err := r.FormFile("audio")
 	if err != nil {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			json.NewEncoder(w).Encode(dto.ErrorResponse{
+				Error: dto.ErrorDetail{
+					Code:    strconv.Itoa(http.StatusRequestEntityTooLarge),
+					Message: "Maximum file size exceeded, max is 100MiB",
+				},
+			})
+			return
+		}
+
 		h.logger.Error("error reading file:", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(dto.ErrorResponse{
@@ -49,17 +63,32 @@ func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// TODO: 400 & 500 codes
+	input := dto.CreateJobRequest{
+		File:   file,
+		Header: header,
+	}
 
-	// Create a job with audio chunks and enqueue
-	err = h.jobService.Create(ctx, file)
-	if err != nil {
-		h.logger.Error("error creating job: ", "error", err)
+	if err := input.Validate(); err != nil {
+		h.logger.Error("validate error", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(dto.ErrorResponse{
 			Error: dto.ErrorDetail{
 				Code:    strconv.Itoa(http.StatusBadRequest),
 				Message: err.Error(),
+			},
+		})
+		return
+	}
+
+	// Create a job with audio chunks and enqueue
+	err = h.jobService.Create(ctx, file)
+	if err != nil {
+		h.logger.Error("error creating job: ", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(dto.ErrorResponse{
+			Error: dto.ErrorDetail{
+				Code:    strconv.Itoa(http.StatusInternalServerError),
+				Message: "Internal server error",
 			},
 		})
 		return
