@@ -19,14 +19,12 @@ type Storage struct {
 	S3Client *s3.Client
 }
 
-func New(ctx context.Context, bucket string) *Storage {
+func New(ctx context.Context, bucket string) (*Storage, error) {
 	sdkConfig, err := config.LoadDefaultConfig(ctx,
 		config.WithBaseEndpoint("http://localhost:3900"),
 	)
 	if err != nil {
-		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-		fmt.Println(err)
-		return nil
+		return nil, fmt.Errorf("load s3 config: %w", err)
 	}
 
 	s3Client := s3.NewFromConfig(sdkConfig, func(o *s3.Options) {
@@ -36,7 +34,7 @@ func New(ctx context.Context, bucket string) *Storage {
 	return &Storage{
 		S3Client: s3Client,
 		Bucket:   bucket,
-	}
+	}, nil
 }
 
 var ErrEOF = errors.New("storage: no more data")
@@ -57,7 +55,6 @@ func (s *Storage) Upload(ctx context.Context, b []byte) (addr string, err error)
 
 	_, err = s.S3Client.PutObject(ctx, input)
 	if err != nil {
-		fmt.Println("error putting into bucket: ", err.Error())
 		return "", fmt.Errorf("error putting into bucket: %w", err)
 	}
 
@@ -77,7 +74,7 @@ func (s *Storage) Get(ctx context.Context, addr string) ([]byte, error) {
 
 	b, err := io.ReadAll(output.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, fmt.Errorf("error reading body: %w", err)
 	}
 
 	return b, nil

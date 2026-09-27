@@ -53,14 +53,16 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 	for {
 		lr := io.LimitReader(r, maxChunkSize)
 		part, err := io.ReadAll(lr)
+		if err != nil {
+			return fmt.Errorf("error reading file chunk: %w", err)
+		}
 
 		addr, err := s.storage.Upload(ctx, part)
-		// There is nothing to read
 		if errors.Is(err, s3.ErrEOF) {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("read: %w", err)
+			return fmt.Errorf("upload chunk to storage: %w", err)
 		}
 
 		chunks = append(chunks, &Chunk{
@@ -72,11 +74,11 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 
 	job, err := s.jobRepo.Create(ctx)
 	if err != nil {
-		return fmt.Errorf("creating job: %w", err)
+		return fmt.Errorf("error creating job: %w", err)
 	}
 
 	if err := s.chunksRepo.CreateBatch(ctx, job.ID, chunks); err != nil {
-		return fmt.Errorf("creating chunks batch: %w", err)
+		return fmt.Errorf("error creating chunks batch: %w", err)
 	}
 
 	// push to Queue
@@ -88,7 +90,7 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 		}
 
 		if err := s.Queue.Enqueue(ctx, qi); err != nil {
-			return fmt.Errorf("push to queue: %w", err)
+			return fmt.Errorf("error pushing to queue: %w", err)
 		}
 	}
 
@@ -98,6 +100,9 @@ func (s *JobService) Create(ctx context.Context, r io.Reader) error {
 func (s *JobService) Get(ctx context.Context, jobID int64) (*Job, error) {
 	job, err := s.jobRepo.Get(ctx, jobID)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, fmt.Errorf("get job: %w", err)
+		}
 		return nil, fmt.Errorf("error get job: %w", err)
 	}
 	return job, nil

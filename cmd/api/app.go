@@ -22,23 +22,30 @@ type app struct {
 	logger *slog.Logger
 }
 
+const (
+	workersNum = 3
+	streamName = "chunks"
+	groupName  = "transcribers"
+)
+
 func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app, error) {
-	// TODO: add ping
 	pg, err := postgres.New(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("init postgres: %w", err)
 	}
-	storage := s3.New(ctx, cfg.Bucket)
+	storage, err := s3.New(ctx, cfg.Bucket)
+	if err != nil {
+		pg.Close()
+		return nil, fmt.Errorf("init storage: %w", err)
+	}
 
-	const (
-		workersNum = 3
-		streamName = "chunks"
-		groupName  = "transcribers"
-	)
+	rdb, err := redis.New(ctx, cfg.RedisURL)
+	if err != nil {
+		pg.Close()
+		return nil, fmt.Errorf("init redis: %w", err)
+	}
 
-	rdb := redis.New(cfg.RedisURL)
-	if err := rdb.Init(ctx, streamName, groupName); err != nil {
-		// Why are they here?
+	if err := rdb.EnsureGroup(ctx, streamName, groupName); err != nil {
 		pg.Close()
 		rdb.Client.Close()
 		return nil, fmt.Errorf("init redis: %w", err)
@@ -63,7 +70,7 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 	// TODO: handle exceptions here
 	go wp.Run(ctx)
 
-	h := api.NewHandler(jobSrv)
+	h := api.NewHandler(jobSrv, logger)
 	r := api.NewRouter(h)
 
 	srv := &http.Server{
@@ -78,10 +85,9 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 	}, nil
 }
 
-func (a *app) run() {
+func (a *app) run() error {
 	if err := a.server.ListenAndServe(); err != nil {
-		a.logger.Error("error listenAndServe")
-		return
+		return err
 	}
-	fmt.Println("server is listening on port ", a.server.Addr)
+	return nil
 }

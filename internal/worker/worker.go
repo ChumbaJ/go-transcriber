@@ -15,14 +15,14 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 	for {
 		msg, err := wp.queue.ClaimStale(ctx, name)
 		if err != nil {
-			fmt.Println("error while claimStale: ", err.Error())
-			return
+			wp.logger.Error("error while claimStale", "error", err, "jobID", msg.Item.JobID)
 		}
 
 		if msg == nil {
 			msg, err = wp.queue.Dequeue(ctx, name)
 			if err != nil {
-				fmt.Println("dequeue:", err)
+				wp.logger.Error("dequeue", "error", err, "jobID", msg.Item.JobID)
+				// Here we can do a revive operation with retry count
 				return
 			}
 		}
@@ -31,20 +31,37 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 			continue
 		}
 
-		wp.processChunk(ctx, &msg.Item)
+		if err := wp.processChunk(ctx, &msg.Item); err != nil {
+			wp.logger.Error("processChunk", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
+			return
+		}
 
 		if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
-			fmt.Println("queue ack: ", err.Error())
+			wp.logger.Error("queue confirm", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
 			return
 		}
 	}
 }
 
-func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) {
+func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) error {
+	exists, err := wp.transcripRepo.ExistsByJobIDAndChunkOrder(ctx, chunk.JobID, chunk.ChunkOrder)
+	if err != nil {
+		return fmt.Errorf("check if transription exists: %w", err)
+	}
+
+	if !exists {
+		if err := wp.transcribeChunk(ctx, chunk); err != nil {
+			return fmt.Errorf("transcribe chunk: %w", err)
+		}
+	}
+
+	return wp.tryCompleteJob(ctx, chunk.JobID)
+}
+
+func (wp *WorkerPool) transcribeChunk(ctx context.Context, chunk *queue.Item) error {
 	_, err := wp.storage.Get(ctx, chunk.Addr)
 	if err != nil {
-		fmt.Println("get storage: ", err.Error())
-		return
+		return fmt.Errorf("get chunk: %w", err)
 	}
 
 	// send to LLM
@@ -59,35 +76,36 @@ func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) {
 		Text:       "hello world",
 	}
 	if err := wp.transcripRepo.Create(ctx, t); err != nil {
-		fmt.Println("create transcription: ", err.Error())
-		return
+		return fmt.Errorf("create transcription: %w", err)
 	}
 
+	return nil
+
+}
+
+func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
+
 	// count transcriptions where job_id = chunk.JobID = completedChunks
-	completedChunks, err := wp.transcripRepo.CountByJobID(ctx, chunk.JobID)
+	completedChunks, err := wp.transcripRepo.CountByJobID(ctx, jobID)
 	if err != nil {
-		fmt.Println("count transcriptions by job id: ", err.Error())
-		return
+		return fmt.Errorf("count transcriptions by job id: %w", err)
 	}
 
 	// count chunks where job_id = chunk.JobID = totalChunks
-	totalChunks, err := wp.chunksRepo.CountByJobID(ctx, chunk.JobID)
+	totalChunks, err := wp.chunksRepo.CountByJobID(ctx, jobID)
 	if err != nil {
-		fmt.Println("count chunks by id: ", err.Error())
-		return
+		return fmt.Errorf("count chunks by id: %w", err)
 
 	}
 
 	if completedChunks == totalChunks {
-		if err := wp.jobsRepo.UpdateStatus(ctx, chunk.JobID, job.JobStatusCompleted); err != nil {
-			fmt.Println("update status job: ", err.Error())
-			return
+		if err := wp.jobsRepo.UpdateStatus(ctx, jobID, job.JobStatusCompleted); err != nil {
+			return fmt.Errorf("update status job: %w", err)
 		}
 
-		transcriptions, err := wp.transcripRepo.ListByJobID(ctx, chunk.JobID)
+		transcriptions, err := wp.transcripRepo.ListByJobID(ctx, jobID)
 		if err != nil {
-			fmt.Println("list transcriptions by jobid: ", err.Error())
-			return
+			return fmt.Errorf("list transcriptions by jobid: %w", err)
 		}
 
 		parts := make([]string, 0, len(transcriptions))
@@ -98,9 +116,10 @@ func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) {
 
 		result := strings.Join(parts, "")
 
-		if err := wp.jobsRepo.SetResult(ctx, chunk.JobID, result); err != nil {
-			fmt.Println("set job result text: ", err.Error())
-			return
+		if err := wp.jobsRepo.SetResult(ctx, jobID, result); err != nil {
+			return fmt.Errorf("set job result text: %w", err)
 		}
 	}
+	return nil
+
 }

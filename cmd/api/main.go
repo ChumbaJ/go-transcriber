@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,6 +22,13 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	if err := run(logger); err != nil {
+		logger.Error("application failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(logger *slog.Logger) error {
 	signalCtx, stop := signal.NotifyContext(context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
@@ -27,27 +36,41 @@ func main() {
 	defer stop()
 
 	if err := godotenv.Load(); err != nil {
-		logger.WarnContext(signalCtx, "could not load .env, using environment variables", "error", err)
+		return fmt.Errorf("load required .env file: %w", err)
 	}
-	cfg := config.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 
 	app, err := newApp(signalCtx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(signalCtx, "application initialization failed", "error", err)
-		return
+		return fmt.Errorf("initialize application: %w", err)
 	}
 
-	go app.run()
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- app.run()
+	}()
+
 	defer app.db.Close()
 
-	fmt.Println("server is listening on port ", cfg.Port)
-
-	<-signalCtx.Done()
+	select {
+	case <-signalCtx.Done():
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server: %w", err)
+		}
+		return nil
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	if err := app.server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown error", "error", err)
+		return fmt.Errorf("graceful shutdown: %w", err)
 	}
+	return nil
 }

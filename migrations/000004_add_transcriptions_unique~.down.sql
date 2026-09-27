@@ -1,0 +1,2 @@
+ALTER TABLE transcriptions
+DROP CONSTRAINT transcriptions_job_chunk_unique;

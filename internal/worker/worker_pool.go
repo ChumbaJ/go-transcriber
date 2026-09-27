@@ -3,6 +3,7 @@ package worker
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
@@ -31,6 +32,7 @@ type (
 		Create(ctx context.Context, t job.Transcribtion) error
 		CountByJobID(ctx context.Context, jobID int64) (int, error)
 		ListByJobID(ctx context.Context, jobID int64) ([]job.Transcribtion, error)
+		ExistsByJobIDAndChunkOrder(ctx context.Context, jobID int64, chunkOrder int) (bool, error)
 	}
 )
 
@@ -42,9 +44,18 @@ type WorkerPool struct {
 	chunksRepo    chunkRepository
 	jobsRepo      jobRepository
 	transcripRepo transcriptionsRepository
+	logger        *slog.Logger
 }
 
-func NewPool(count uint8, queue Queue, cs chunkStorage, jobRepo jobRepository, chunksRepo chunkRepository, transRepo transcriptionsRepository) *WorkerPool {
+func NewPool(
+	count uint8,
+	queue Queue,
+	cs chunkStorage,
+	jobRepo jobRepository,
+	chunksRepo chunkRepository,
+	transRepo transcriptionsRepository,
+	logger *slog.Logger,
+) *WorkerPool {
 	return &WorkerPool{
 		count:         count,
 		queue:         queue,
@@ -52,6 +63,7 @@ func NewPool(count uint8, queue Queue, cs chunkStorage, jobRepo jobRepository, c
 		jobsRepo:      jobRepo,
 		chunksRepo:    chunksRepo,
 		transcripRepo: transRepo,
+		logger:        logger,
 	}
 }
 

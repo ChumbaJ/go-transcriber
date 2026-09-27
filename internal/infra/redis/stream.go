@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func (r *Redis) Init(ctx context.Context, stream, group string) error {
+func (r *Redis) EnsureGroup(ctx context.Context, stream, group string) error {
 	err := r.Client.XGroupCreateMkStream(ctx, stream, group, "0").Err()
 	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
 		return fmt.Errorf("create consumer group: %w", err)

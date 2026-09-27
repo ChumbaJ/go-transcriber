@@ -1,6 +1,8 @@
 // Package job
 package job
 
+import "errors"
+
 type JobStatus string
 
 const (
@@ -8,6 +10,8 @@ const (
 	JobStatusCompleted JobStatus = "completed"
 	JobStatusFailed    JobStatus = "failed"
 )
+
+var ErrNotFound = errors.New("job not found")
 
 type Chunk struct {
 	Order int

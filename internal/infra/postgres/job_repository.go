@@ -3,9 +3,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -60,6 +62,9 @@ func (r *JobRepository) Get(ctx context.Context, jobID int64) (*job.Job, error) 
 	var j job.Job
 	err := r.db.QueryRow(ctx, `SELECT id, status, result_text FROM jobs WHERE id = $1`, jobID).Scan(&j.ID, &j.Status, &j.ResultText)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, job.ErrNotFound
+		}
 		return nil, fmt.Errorf("error querying job by id: %w", err)
 	}
 	return &j, nil

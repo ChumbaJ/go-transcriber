@@ -20,7 +20,13 @@ func NewTranscripRepo(db *pgxpool.Pool) *TranscriptionsRepository {
 }
 
 func (r *TranscriptionsRepository) Create(ctx context.Context, t job.Transcribtion) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO transcriptions (job_id, chunk_order, text) VALUES ($1, $2, $3)`, t.JobID, t.ChunkOrder, t.Text)
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO transcriptions
+		(job_id, chunk_order, text)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (job_id, chunk_order) DO NOTHING;
+		`,
+		t.JobID, t.ChunkOrder, t.Text)
 	if err != nil {
 		return fmt.Errorf("insert into transcriptoins: %w", err)
 	}
