@@ -54,6 +54,7 @@ func (wp *WorkerPool) processChunk(ctx context.Context, msg *queue.Message) erro
 		if err := wp.transcribeChunk(ctx, &chunk); err != nil {
 			wp.logger.Error("transcribe chunk", "error", err)
 			if err := wp.markJobFailed(ctx, msg); err != nil {
+				return fmt.Errorf("mark job failed: %w", err)
 			}
 		}
 	}

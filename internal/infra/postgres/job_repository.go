@@ -69,3 +69,16 @@ func (r *JobRepository) Get(ctx context.Context, jobID int64) (*job.Job, error) 
 	}
 	return &j, nil
 }
+
+func (r *JobRepository) DeleteByID(ctx context.Context, jobID int64) error {
+	_, err := r.db.Exec(ctx,
+		`
+		DELETE FROM jobs
+		WHERE id = $1
+		`, jobID)
+	if err != nil {
+		return fmt.Errorf("delete job by id: %w", err)
+	}
+
+	return nil
+}
