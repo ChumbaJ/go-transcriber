@@ -7,16 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ChumbaJ/go-transcriber/internal/config"
 )
 
 type Transcriber struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
+	mu            sync.Mutex
+	fakeFailCount int
+	httpClient    *http.Client
+	baseURL       string
+	apiKey        string
 }
+
+var ErrServiceUnavaliable = errors.New("external service unavaliable")
 
 const timeoutSec = 10
 
@@ -26,34 +31,37 @@ func New(cfg *config.Config) *Transcriber {
 	}
 
 	return &Transcriber{
-		httpClient: c,
-		baseURL:    cfg.TranscriberUrl,
-		apiKey:     cfg.TranscriberApiKey,
+		fakeFailCount: 2,
+		httpClient:    c,
+		baseURL:       cfg.TranscriberUrl,
+		apiKey:        cfg.TranscriberApiKey,
 	}
 }
 
-func (t *Transcriber) Transcribe(ctx context.Context, b []byte) (result string, error error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", t.baseURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("new req: %w", err)
-	}
-
-	_, err = t.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("response: %w", err)
-	}
-
+// Transcribe currently uses a fake response; real HTTP integration is pending.
+func (t *Transcriber) Transcribe(ctx context.Context, b []byte) (string, error) {
 	return t.fakeTranscribe(ctx)
 }
 
-var fakeFailCount = 2
-
-func (*Transcriber) fakeTranscribe(ctx context.Context) (result string, error error) {
-	if fakeFailCount > 0 {
-		time.Sleep(5)
-		fakeFailCount -= 1
-		fakeErr := errors.New("service is not avaliable now")
-		return "", fmt.Errorf("request: %w", fakeErr)
+func (t *Transcriber) fakeTranscribe(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	t.mu.Lock()
+	fail := t.fakeFailCount > 0
+	if fail {
+		t.fakeFailCount--
+	}
+	t.mu.Unlock()
+	if fail {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+		return "", fmt.Errorf("request: %w", ErrServiceUnavaliable)
 	}
 	return "hello world", nil
 }

@@ -3,15 +3,21 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ChumbaJ/go-transcriber/internal/infra/transcription"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/ChumbaJ/go-transcriber/internal/queue"
 )
 
 func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		msg, err := wp.queue.ClaimStale(ctx, name)
 		if err != nil {
 			wp.logger.Error("error while claimStale", "error", err, "worker", name)
@@ -31,8 +37,11 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 		}
 
 		if err := wp.processChunk(ctx, msg); err != nil {
-			wp.logger.Error("processChunk", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
-			return
+			if !errors.Is(err, job.JobFailed) {
+				wp.logger.Error("processChunk", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
+				return
+			}
+			wp.logger.Warn("job failed", "worker", name, "messageID", msg.ID, "jobID", msg.Item.JobID)
 		}
 
 		if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
@@ -44,6 +53,13 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 
 func (wp *WorkerPool) processChunk(ctx context.Context, msg *queue.Message) error {
 	chunk := msg.Item
+	j, err := wp.jobsRepo.Get(ctx, chunk.JobID)
+	if err != nil {
+		return fmt.Errorf("get job status: %w", err)
+	}
+	if j.Status == job.JobStatusFailed {
+		return job.JobFailed
+	}
 
 	exists, err := wp.transcripRepo.ExistsByJobIDAndChunkOrder(ctx, chunk.JobID, chunk.ChunkOrder)
 	if err != nil {
@@ -51,26 +67,31 @@ func (wp *WorkerPool) processChunk(ctx context.Context, msg *queue.Message) erro
 	}
 
 	if !exists {
-		if err := wp.transcribeChunk(ctx, &chunk); err != nil {
-			wp.logger.Error("transcribe chunk", "error", err)
-			if err := wp.markJobFailed(ctx, msg); err != nil {
-				return fmt.Errorf("mark job failed: %w", err)
-			}
+		if err := wp.transcribeChunk(ctx, msg); err != nil {
+			return fmt.Errorf("transcribe chunk: %w", err)
 		}
 	}
 
 	return wp.tryCompleteJob(ctx, chunk.JobID)
 }
 
-func (wp *WorkerPool) transcribeChunk(ctx context.Context, chunk *queue.Item) error {
+func (wp *WorkerPool) transcribeChunk(ctx context.Context, msg *queue.Message) error {
+	chunk := msg.Item
+
 	b, err := wp.storage.Get(ctx, chunk.Addr)
 	if err != nil {
 		return fmt.Errorf("get chunk: %w", err)
 	}
 
-	result, err := wp.transcriberClient.Transcribe(ctx, b)
+	result, err := wp.transcribeWithRetry(ctx, b)
 	if err != nil {
-		return fmt.Errorf("transcribe: %w", err)
+		if !errors.Is(err, transcription.ErrServiceUnavaliable) {
+			return fmt.Errorf("transcribe: %w", err)
+		}
+		if markErr := wp.markJobFailed(ctx, msg); markErr != nil {
+			return fmt.Errorf("transcribe failed (%v), mark failed: %w", err, markErr)
+		}
+		return job.JobFailed
 	}
 
 	// insert into transcriptions table
@@ -125,23 +146,39 @@ func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
 }
 
 func (wp *WorkerPool) markJobFailed(ctx context.Context, msg *queue.Message) error {
-	chunk := msg.Item
-
-	// remove chunks from storage
-	n, err := wp.storage.DeleteChunksByJobID(ctx, chunk.JobID)
-	if err != nil {
-		return fmt.Errorf("delete chunks by jobID: %w", err)
+	if err := wp.jobsRepo.MarkFailed(ctx, msg.Item.JobID); err != nil {
+		return fmt.Errorf("mark job failed: %w", err)
 	}
-	wp.logger.Info("chunks deleted from storage", "count", n)
-
-	// delete job
-	if err := wp.jobsRepo.DeleteByID(ctx, chunk.JobID); err != nil {
-		return fmt.Errorf("delete job by ID: %w", err)
-	}
-	// confirm jobQueue
-	if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
-		return fmt.Errorf("queue confirm: %w", err)
-	}
-
 	return nil
+}
+
+const (
+	transcribeMaxAttempts = 3 // Initial request and two retries.
+	transcribeRetryDelay  = time.Second
+)
+
+func (wp *WorkerPool) transcribeWithRetry(ctx context.Context, b []byte) (string, error) {
+	for attempt := 1; attempt <= transcribeMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		result, err := wp.transcriberClient.Transcribe(ctx, b)
+		if err == nil {
+			return result, nil
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if !errors.Is(err, transcription.ErrServiceUnavaliable) || attempt == transcribeMaxAttempts {
+			return "", fmt.Errorf("attempt %d: %w", attempt, err)
+		}
+		timer := time.NewTimer(transcribeRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return "", fmt.Errorf("transcription attempts exhausted: %w", transcription.ErrServiceUnavaliable)
 }

@@ -54,7 +54,7 @@ func (cr *ChunksRepository) CountByJobID(ctx context.Context, jobID int64) (int,
 			WHERE job_id = $1
 		`, jobID).Scan(&count)
 	if err != nil {
-		return 0, fmt.Errorf("count chunks: ", err)
+		return 0, fmt.Errorf("count chunks: %w", err)
 	}
 
 	return count, nil

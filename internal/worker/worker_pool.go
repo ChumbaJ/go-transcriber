@@ -18,9 +18,10 @@ type Queue interface {
 
 type (
 	jobRepository interface {
+		Get(ctx context.Context, jobID int64) (*job.Job, error)
 		UpdateStatus(ctx context.Context, jobID int64, status job.JobStatus) error
 		SetResult(ctx context.Context, jobID int64, result string) error
-		DeleteByID(ctx context.Context, jobID int64) error
+		MarkFailed(ctx context.Context, jobID int64) error
 	}
 	chunkRepository interface {
 		CountByJobID(ctx context.Context, jobID int64) (int, error)

@@ -36,8 +36,8 @@ func (r *JobRepository) UpdateStatus(ctx context.Context, jobID int64, status jo
 	_, err := r.db.Exec(ctx, `
 			UPDATE jobs 
 			SET status = $1
-			WHERE id = $2
-		`, status, jobID)
+			WHERE id = $2 AND status <> $3
+		`, status, jobID, job.JobStatusFailed)
 	if err != nil {
 		return fmt.Errorf("update job status: %w", err)
 	}
@@ -70,14 +70,15 @@ func (r *JobRepository) Get(ctx context.Context, jobID int64) (*job.Job, error) 
 	return &j, nil
 }
 
-func (r *JobRepository) DeleteByID(ctx context.Context, jobID int64) error {
+func (r *JobRepository) MarkFailed(ctx context.Context, jobID int64) error {
 	_, err := r.db.Exec(ctx,
 		`
-		DELETE FROM jobs
+		UPDATE jobs
+		SET status = $2
 		WHERE id = $1
-		`, jobID)
+		`, jobID, job.JobStatusFailed)
 	if err != nil {
-		return fmt.Errorf("delete job by id: %w", err)
+		return fmt.Errorf("mark job failed: %w", err)
 	}
 
 	return nil

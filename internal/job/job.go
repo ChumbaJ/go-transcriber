@@ -11,7 +11,10 @@ const (
 	JobStatusFailed    JobStatus = "failed"
 )
 
-var ErrNotFound = errors.New("job not found")
+var (
+	ErrNotFound = errors.New("job not found")
+	JobFailed   = errors.New("job marked as failed")
+)
 
 type Chunk struct {
 	Order int
