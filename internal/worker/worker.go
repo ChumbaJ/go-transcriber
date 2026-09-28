@@ -127,9 +127,12 @@ func (wp *WorkerPool) markJobFailed(ctx context.Context, msg *queue.Message) err
 	chunk := msg.Item
 
 	// remove chunks from storage
-	if err := wp.storage.DeleteChunksByJobID(ctx, chunk.JobID); err != nil {
+	n, err := wp.storage.DeleteChunksByJobID(ctx, chunk.JobID)
+	if err != nil {
 		return fmt.Errorf("delete chunks by jobID: %w", err)
 	}
+	wp.logger.Info("chunks deleted from storage", "count", n)
+
 	// delete job
 	if err := wp.jobsRepo.DeleteByID(ctx, chunk.JobID); err != nil {
 		return fmt.Errorf("delete job by ID: %w", err)

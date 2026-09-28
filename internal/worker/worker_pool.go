@@ -33,7 +33,7 @@ type (
 	}
 	chunkStorage interface {
 		Get(ctx context.Context, addr string) ([]byte, error)
-		DeleteChunksByJobID(ctx context.Context, jobID int64) error
+		DeleteChunksByJobID(ctx context.Context, jobID int64) (n int, err error)
 	}
 	transcriberClient interface {
 		Transcribe(ctx context.Context, b []byte) (result string, err error)

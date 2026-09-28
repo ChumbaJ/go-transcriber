@@ -79,3 +79,13 @@ func (s *Storage) Get(ctx context.Context, addr string) ([]byte, error) {
 
 	return b, nil
 }
+
+func (s *Storage) DeleteByID(ctx context.Context, jobID int64) (n int, err error) {
+	output, err := s.S3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{})
+	if err != nil {
+		return 0, fmt.Errorf("delete chunks by id in storage: %w", err)
+	}
+	d := output.Deleted
+
+	return len(d), nil
+}
