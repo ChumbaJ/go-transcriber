@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/ChumbaJ/go-transcriber/internal/queue"
@@ -31,7 +30,7 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 			continue
 		}
 
-		if err := wp.processChunk(ctx, &msg.Item); err != nil {
+		if err := wp.processChunk(ctx, msg); err != nil {
 			wp.logger.Error("processChunk", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
 			return
 		}
@@ -43,15 +42,19 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 	}
 }
 
-func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) error {
+func (wp *WorkerPool) processChunk(ctx context.Context, msg *queue.Message) error {
+	chunk := msg.Item
+
 	exists, err := wp.transcripRepo.ExistsByJobIDAndChunkOrder(ctx, chunk.JobID, chunk.ChunkOrder)
 	if err != nil {
 		return fmt.Errorf("check if transription exists: %w", err)
 	}
 
 	if !exists {
-		if err := wp.transcribeChunk(ctx, chunk); err != nil {
-			return fmt.Errorf("transcribe chunk: %w", err)
+		if err := wp.transcribeChunk(ctx, &chunk); err != nil {
+			wp.logger.Error("transcribe chunk", "error", err)
+			if err := wp.markJobFailed(ctx, msg); err != nil {
+			}
 		}
 	}
 
@@ -59,32 +62,30 @@ func (wp *WorkerPool) processChunk(ctx context.Context, chunk *queue.Item) error
 }
 
 func (wp *WorkerPool) transcribeChunk(ctx context.Context, chunk *queue.Item) error {
-	_, err := wp.storage.Get(ctx, chunk.Addr)
+	b, err := wp.storage.Get(ctx, chunk.Addr)
 	if err != nil {
 		return fmt.Errorf("get chunk: %w", err)
 	}
 
-	// send to LLM
-	time.Sleep(time.Second * 15)
-
-	// TODO: start transaction
+	result, err := wp.transcriberClient.Transcribe(ctx, b)
+	if err != nil {
+		return fmt.Errorf("transcribe: %w", err)
+	}
 
 	// insert into transcriptions table
 	t := job.Transcribtion{
 		JobID:      chunk.JobID,
 		ChunkOrder: chunk.ChunkOrder,
-		Text:       "hello world",
+		Text:       result,
 	}
 	if err := wp.transcripRepo.Create(ctx, t); err != nil {
 		return fmt.Errorf("create transcription: %w", err)
 	}
 
 	return nil
-
 }
 
 func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
-
 	// count transcriptions where job_id = chunk.JobID = completedChunks
 	completedChunks, err := wp.transcripRepo.CountByJobID(ctx, jobID)
 	if err != nil {
@@ -95,7 +96,6 @@ func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
 	totalChunks, err := wp.chunksRepo.CountByJobID(ctx, jobID)
 	if err != nil {
 		return fmt.Errorf("count chunks by id: %w", err)
-
 	}
 
 	if completedChunks == totalChunks {
@@ -121,5 +121,23 @@ func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
 		}
 	}
 	return nil
+}
 
+func (wp *WorkerPool) markJobFailed(ctx context.Context, msg *queue.Message) error {
+	chunk := msg.Item
+
+	// remove chunks from storage
+	if err := wp.storage.DeleteChunksByJobID(ctx, chunk.JobID); err != nil {
+		return fmt.Errorf("delete chunks by jobID: %w", err)
+	}
+	// delete job
+	if err := wp.jobsRepo.DeleteByID(ctx, chunk.JobID); err != nil {
+		return fmt.Errorf("delete job by ID: %w", err)
+	}
+	// confirm jobQueue
+	if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
+		return fmt.Errorf("queue confirm: %w", err)
+	}
+
+	return nil
 }

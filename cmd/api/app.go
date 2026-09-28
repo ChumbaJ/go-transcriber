@@ -11,6 +11,7 @@ import (
 	"github.com/ChumbaJ/go-transcriber/internal/infra/postgres"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/redis"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
+	"github.com/ChumbaJ/go-transcriber/internal/infra/transcription"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/ChumbaJ/go-transcriber/internal/queue"
 	"github.com/ChumbaJ/go-transcriber/internal/worker"
@@ -59,6 +60,8 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 		queue,
 	)
 
+	tc := transcription.New(cfg)
+
 	wp := worker.NewPool(
 		workersNum,
 		queue,
@@ -66,9 +69,9 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 		pg.Jobs,
 		pg.Chunks,
 		pg.Transcripts,
+		tc,
 		logger,
 	)
-	// TODO: handle exceptions here
 	go wp.Run(ctx)
 
 	h := api.NewHandler(jobSrv, logger)

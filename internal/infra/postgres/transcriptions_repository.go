@@ -75,7 +75,7 @@ func (r *TranscriptionsRepository) ListByJobID(ctx context.Context, jobID int64)
 func (r *TranscriptionsRepository) ExistsByJobIDAndChunkOrder(ctx context.Context, jobID int64, chunkOrder int) (bool, error) {
 	if err := r.db.QueryRow(ctx,
 		`SELECT * FROM transcriptions
-	 WHERE job_id = $1 & chunk_order = $2;
+	 WHERE job_id = $1 AND chunk_order = $2;
 	`,
 		jobID,
 		chunkOrder,

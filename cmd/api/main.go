@@ -55,6 +55,7 @@ func run(logger *slog.Logger) error {
 		errCh <- app.run()
 	}()
 
+	fmt.Println("server is running in port :", cfg.Port)
 	defer app.db.Close()
 
 	select {

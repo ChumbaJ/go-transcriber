@@ -60,7 +60,11 @@ func (q *Queue) Enqueue(ctx context.Context, item *Item) error {
 func (q *Queue) Dequeue(ctx context.Context, consumerName string) (*Message, error) {
 	msg, err := q.stream.ReadGroup(ctx, q.streamName, q.groupName, consumerName)
 	if err != nil {
-		return nil, fmt.Errorf("dequeue: %w", err)
+		return nil, fmt.Errorf("readgroup: %w", err)
+	}
+
+	if msg == nil {
+		return nil, nil
 	}
 
 	raw, ok := msg.Values[payloadField].(string)

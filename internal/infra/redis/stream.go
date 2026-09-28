@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -38,8 +39,16 @@ func (r *Redis) ReadGroup(ctx context.Context, stream, group, consumer string) (
 		Count:    1,
 		Block:    time.Second * readBlockIntervalSec,
 	}).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("xreadgroup: %w", err)
+	}
+
+	if len(streams) == 0 || len(streams[0].Messages) == 0 {
+		return nil, nil
 	}
 
 	msg := streams[0].Messages[0]
