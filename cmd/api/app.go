@@ -64,19 +64,22 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 		ap,
 	)
 
-	tc := transcription.New(openai.New(cfg))
-
-	wp := worker.NewPool(
-		workersNum,
-		queue,
-		storage,
-		pg.Jobs,
-		pg.Chunks,
-		pg.Transcripts,
-		tc,
-		logger,
-	)
-	go wp.Run(ctx)
+	// Temporarily disable workers while measuring job creation without OpenAI calls.
+	const runWorkers = false
+	if runWorkers {
+		tc := transcription.New(openai.New(cfg))
+		wp := worker.NewPool(
+			workersNum,
+			queue,
+			storage,
+			pg.Jobs,
+			pg.Chunks,
+			pg.Transcripts,
+			tc,
+			logger,
+		)
+		go wp.Run(ctx)
+	}
 
 	h := api.NewHandler(jobSrv, logger)
 	r := api.NewRouter(h)
