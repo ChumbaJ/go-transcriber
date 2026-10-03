@@ -21,6 +21,7 @@ type Item struct {
 	JobID      int64
 	ChunkOrder int
 	Addr       string
+	Format     string
 }
 
 type Message struct {

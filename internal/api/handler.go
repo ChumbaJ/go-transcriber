@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ChumbaJ/go-transcriber/internal/api/dto"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
@@ -16,7 +17,7 @@ import (
 )
 
 type jobService interface {
-	Create(ctx context.Context, r io.Reader) error
+	Create(ctx context.Context, r io.Reader, startedAt time.Time) error
 	Get(ctx context.Context, jobId int64) (*job.Job, error)
 }
 
@@ -33,6 +34,7 @@ func NewHandler(js jobService, logger *slog.Logger) *Handler {
 }
 
 func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
 	w.Header().Set("Content-Type", "application/json")
 	ctx := r.Context()
 
@@ -81,7 +83,7 @@ func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a job with audio chunks and enqueue
-	err = h.jobService.Create(ctx, file)
+	err = h.jobService.Create(ctx, file, startedAt)
 	if err != nil {
 		h.logger.Error("error creating job: ", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)

@@ -1,7 +1,10 @@
 // Package job
 package job
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 type JobStatus string
 
@@ -28,7 +31,9 @@ type Transcribtion struct {
 }
 
 type Job struct {
-	ID         int64
-	Status     JobStatus
-	ResultText string
+	ID          int64
+	Status      JobStatus
+	ResultText  string
+	CreatedAt   time.Time
+	CompletedAt *time.Time
 }

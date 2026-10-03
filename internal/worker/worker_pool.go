@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/ChumbaJ/go-transcriber/internal/queue"
@@ -19,8 +20,7 @@ type Queue interface {
 type (
 	jobRepository interface {
 		Get(ctx context.Context, jobID int64) (*job.Job, error)
-		UpdateStatus(ctx context.Context, jobID int64, status job.JobStatus) error
-		SetResult(ctx context.Context, jobID int64, result string) error
+		Complete(ctx context.Context, jobID int64, result string) (time.Duration, bool, error)
 		MarkFailed(ctx context.Context, jobID int64) error
 	}
 	chunkRepository interface {
@@ -37,7 +37,7 @@ type (
 		DeleteChunksByJobID(ctx context.Context, jobID int64) (n int, err error)
 	}
 	transcriberClient interface {
-		Transcribe(ctx context.Context, b []byte) (result string, err error)
+		Transcribe(ctx context.Context, b []byte, format string) (result string, err error)
 	}
 )
 

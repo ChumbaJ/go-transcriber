@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/ChumbaJ/go-transcriber/internal/infra/transcription"
 	"github.com/ChumbaJ/go-transcriber/internal/job"
 	"github.com/ChumbaJ/go-transcriber/internal/queue"
 )
@@ -21,14 +19,14 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 		msg, err := wp.queue.ClaimStale(ctx, name)
 		if err != nil {
 			wp.logger.Error("error while claimStale", "error", err, "worker", name)
+			continue
 		}
 
 		if msg == nil {
 			msg, err = wp.queue.Dequeue(ctx, name)
 			if err != nil {
 				wp.logger.Error("dequeue", "error", err, "worker", name)
-				// Here we can do a revive operation with retry count
-				return
+				continue
 			}
 		}
 
@@ -39,14 +37,17 @@ func (wp *WorkerPool) runWorker(ctx context.Context, name string) {
 		if err := wp.processChunk(ctx, msg); err != nil {
 			if !errors.Is(err, job.JobFailed) {
 				wp.logger.Error("processChunk", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
-				return
+				if markErr := wp.markJobFailed(ctx, msg); markErr != nil {
+					wp.logger.Error("mark job failed", "error", markErr, "messageID", msg.ID, "jobID", msg.Item.JobID)
+					continue
+				}
+			} else {
+				wp.logger.Warn("job failed", "error", err, "worker", name, "messageID", msg.ID, "jobID", msg.Item.JobID)
 			}
-			wp.logger.Warn("job failed", "worker", name, "messageID", msg.ID, "jobID", msg.Item.JobID)
 		}
 
 		if err := wp.queue.Confirm(ctx, msg.ID); err != nil {
 			wp.logger.Error("queue confirm", "error", err, "messageID", msg.ID, "jobID", msg.Item.JobID)
-			return
 		}
 	}
 }
@@ -83,15 +84,12 @@ func (wp *WorkerPool) transcribeChunk(ctx context.Context, msg *queue.Message) e
 		return fmt.Errorf("get chunk: %w", err)
 	}
 
-	result, err := wp.transcribeWithRetry(ctx, b)
+	result, err := wp.transcriberClient.Transcribe(ctx, b, chunk.Format)
 	if err != nil {
-		if !errors.Is(err, transcription.ErrServiceUnavaliable) {
-			return fmt.Errorf("transcribe: %w", err)
-		}
 		if markErr := wp.markJobFailed(ctx, msg); markErr != nil {
 			return fmt.Errorf("transcribe failed (%v), mark failed: %w", err, markErr)
 		}
-		return job.JobFailed
+		return fmt.Errorf("%w: transcription: %v", job.JobFailed, err)
 	}
 
 	// insert into transcriptions table
@@ -121,10 +119,6 @@ func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
 	}
 
 	if completedChunks == totalChunks {
-		if err := wp.jobsRepo.UpdateStatus(ctx, jobID, job.JobStatusCompleted); err != nil {
-			return fmt.Errorf("update status job: %w", err)
-		}
-
 		transcriptions, err := wp.transcripRepo.ListByJobID(ctx, jobID)
 		if err != nil {
 			return fmt.Errorf("list transcriptions by jobid: %w", err)
@@ -138,8 +132,12 @@ func (wp *WorkerPool) tryCompleteJob(ctx context.Context, jobID int64) error {
 
 		result := strings.Join(parts, "")
 
-		if err := wp.jobsRepo.SetResult(ctx, jobID, result); err != nil {
-			return fmt.Errorf("set job result text: %w", err)
+		duration, completed, err := wp.jobsRepo.Complete(ctx, jobID, result)
+		if err != nil {
+			return fmt.Errorf("complete job: %w", err)
+		}
+		if completed {
+			fmt.Printf("job %d completed in %s\n", jobID, duration)
 		}
 	}
 	return nil
@@ -150,35 +148,4 @@ func (wp *WorkerPool) markJobFailed(ctx context.Context, msg *queue.Message) err
 		return fmt.Errorf("mark job failed: %w", err)
 	}
 	return nil
-}
-
-const (
-	transcribeMaxAttempts = 3 // Initial request and two retries.
-	transcribeRetryDelay  = time.Second
-)
-
-func (wp *WorkerPool) transcribeWithRetry(ctx context.Context, b []byte) (string, error) {
-	for attempt := 1; attempt <= transcribeMaxAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		result, err := wp.transcriberClient.Transcribe(ctx, b)
-		if err == nil {
-			return result, nil
-		}
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if !errors.Is(err, transcription.ErrServiceUnavaliable) || attempt == transcribeMaxAttempts {
-			return "", fmt.Errorf("attempt %d: %w", attempt, err)
-		}
-		timer := time.NewTimer(transcribeRetryDelay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-	}
-	return "", fmt.Errorf("transcription attempts exhausted: %w", transcription.ErrServiceUnavaliable)
 }

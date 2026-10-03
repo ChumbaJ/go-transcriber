@@ -1,67 +1,30 @@
-// Package transcription is an external service wrapper
-
+// Package transcription coordinates audio transcription.
 package transcription
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"sync"
-	"time"
-
-	"github.com/ChumbaJ/go-transcriber/internal/config"
 )
 
+type Client interface {
+	Transcribe(ctx context.Context, audio []byte, format string) (string, error)
+}
+
 type Transcriber struct {
-	mu            sync.Mutex
-	fakeFailCount int
-	httpClient    *http.Client
-	baseURL       string
-	apiKey        string
+	client Client
 }
 
 var ErrServiceUnavaliable = errors.New("external service unavaliable")
 
-const timeoutSec = 10
-
-func New(cfg *config.Config) *Transcriber {
-	c := &http.Client{
-		Timeout: time.Second * timeoutSec,
-	}
-
-	return &Transcriber{
-		fakeFailCount: 2,
-		httpClient:    c,
-		baseURL:       cfg.TranscriberUrl,
-		apiKey:        cfg.TranscriberApiKey,
-	}
+func New(client Client) *Transcriber {
+	return &Transcriber{client: client}
 }
 
-// Transcribe currently uses a fake response; real HTTP integration is pending.
-func (t *Transcriber) Transcribe(ctx context.Context, b []byte) (string, error) {
-	return t.fakeTranscribe(ctx)
-}
-
-func (t *Transcriber) fakeTranscribe(ctx context.Context) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
+func (t *Transcriber) Transcribe(ctx context.Context, audio []byte, format string) (string, error) {
+	text, err := t.client.Transcribe(ctx, audio, format)
+	if err != nil {
+		return "", fmt.Errorf("create transcription: %w", err)
 	}
-	t.mu.Lock()
-	fail := t.fakeFailCount > 0
-	if fail {
-		t.fakeFailCount--
-	}
-	t.mu.Unlock()
-	if fail {
-		timer := time.NewTimer(5 * time.Second)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-		return "", fmt.Errorf("request: %w", ErrServiceUnavaliable)
-	}
-	return "hello world", nil
+	return text, nil
 }

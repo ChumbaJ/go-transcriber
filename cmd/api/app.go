@@ -8,6 +8,8 @@ import (
 
 	"github.com/ChumbaJ/go-transcriber/internal/api"
 	"github.com/ChumbaJ/go-transcriber/internal/config"
+	audioprocessor "github.com/ChumbaJ/go-transcriber/internal/infra/audioProcessor"
+	"github.com/ChumbaJ/go-transcriber/internal/infra/openai"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/postgres"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/redis"
 	"github.com/ChumbaJ/go-transcriber/internal/infra/s3"
@@ -53,14 +55,16 @@ func newApp(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*app,
 	}
 	queue := queue.New(rdb, streamName, groupName)
 
+	ap := audioprocessor.New()
 	jobSrv := job.NewService(
 		pg.Jobs,
 		pg.Chunks,
 		storage,
 		queue,
+		ap,
 	)
 
-	tc := transcription.New(cfg)
+	tc := transcription.New(openai.New(cfg))
 
 	wp := worker.NewPool(
 		workersNum,
